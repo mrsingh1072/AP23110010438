@@ -1,0 +1,30 @@
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+html {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background:
+    radial-gradient(circle at top left, rgba(208, 139, 91, 0.18), transparent 28%),
+    radial-gradient(circle at bottom right, rgba(111, 138, 102, 0.18), transparent 24%),
+    linear-gradient(180deg, #f4ede3 0%, #ece4d7 100%);
+  color: #221912;
+  font-family: 'Segoe UI Variable', 'Segoe UI', 'Trebuchet MS', sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}

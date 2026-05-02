@@ -1,0 +1,14 @@
+{
+  "name": "notification-system-workspace",
+  "private": true,
+  "version": "1.0.0",
+  "workspaces": [
+    "notification_app_fe"
+  ],
+  "scripts": {
+    "start": "npm run start --workspace notification_app_fe",
+    "dev": "npm run dev --workspace notification_app_fe",
+    "build": "npm run build --workspace notification_app_fe",
+    "preview": "npm run preview --workspace notification_app_fe"
+  }
+}
