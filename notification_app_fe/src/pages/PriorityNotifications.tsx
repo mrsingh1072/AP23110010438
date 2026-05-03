@@ -4,11 +4,14 @@ import { EmptyState } from '../components/EmptyState';
 import { ErrorState } from '../components/ErrorState';
 import { LoadingState } from '../components/LoadingState';
 import { NotificationCard } from '../components/NotificationCard';
-import { fetchAllCampusNotifications, type CampusNotification } from '../services/api';
+import { fetchNotificationPage, type CampusNotification } from '../services/api';
 import { selectTopPriority, sortByPriority } from '../utils/prioritySort';
 import { useViewedNotifications } from '../hooks/useViewedNotifications';
 import { Log } from '../../../logging_middleware/log';
 import { useAuth } from '../context/AuthContext';
+
+const PRIORITY_PAGE_SIZE = 100;
+const PRIORITY_MAX_PAGES = 50;
 
 
 interface NotificationViewModel {
@@ -24,26 +27,49 @@ interface NotificationViewModel {
   timestamp: string;
 }
 
+async function fetchAllPriorityNotifications(token: string): Promise<CampusNotification[]> {
+  const results: CampusNotification[] = [];
+
+  for (let page = 1; page <= PRIORITY_MAX_PAGES; page += 1) {
+    const batch = await fetchNotificationPage(token, {
+      page,
+      limit: PRIORITY_PAGE_SIZE,
+      notificationType: 'All',
+    });
+
+    results.push(...batch);
+
+    if (batch.length < PRIORITY_PAGE_SIZE) {
+      break;
+    }
+  }
+
+  return results;
+}
+
 export function PriorityNotifications() {
   const { accessToken, isLoading: authLoading, error: authError } = useAuth();
   const [topN, setTopN] = useState(5);
   const [items, setItems] = useState<NotificationViewModel[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [hasLoadedNotifications, setHasLoadedNotifications] = useState(false);
   const viewed = useViewedNotifications();
 
   const loadPriorityNotifications = useCallback(async () => {
     if (!accessToken) {
       setItems([]);
       setError(null);
+      setHasLoadedNotifications(true);
       return;
     }
 
     setLoading(true);
     setError(null);
+    setHasLoadedNotifications(false);
 
     try {
-      const allNotifications = await fetchAllCampusNotifications(accessToken);
+      const allNotifications = await fetchAllPriorityNotifications(accessToken);
       const prioritizedNotifications = sortByPriority(allNotifications).map((item) => ({
         ID: item.ID,
         Type: item.Type,
@@ -63,6 +89,7 @@ export function PriorityNotifications() {
       setItems([]);
     } finally {
       setLoading(false);
+      setHasLoadedNotifications(true);
     }
   }, [accessToken, viewed.isRead]);
 
@@ -162,7 +189,7 @@ export function PriorityNotifications() {
 
             {loading ? <LoadingState label="Collecting campus notifications for priority ranking." /> : null}
             {error ? <ErrorState message={error} onRetry={loadPriorityNotifications} /> : null}
-            {!authLoading && accessToken && !loading && !error && topNotifications.length === 0 ? (
+            {!authLoading && !loading && !error && hasLoadedNotifications && topNotifications.length === 0 ? (
               <EmptyState
                 title="No notifications available"
                 description="The API returned no notifications, so there is nothing to rank yet."
@@ -171,7 +198,7 @@ export function PriorityNotifications() {
               />
             ) : null}
 
-            {!authLoading && accessToken && !loading && !error && topNotifications.length > 0 ? (
+            {!authLoading && !loading && !error && topNotifications.length > 0 ? (
               <Grid container spacing={2}>
                 {topNotifications.map((notification, index) => (
                   <Grid key={notification.id} item xs={12}>

@@ -127,7 +127,7 @@ export function AllNotifications() {
 
             {loading ? <LoadingState label="Loading campus notifications from the API." /> : null}
             {error ? <ErrorState message={error} onRetry={refreshPage} /> : null}
-            {!loading && !error && items.length === 0 ? (
+            {!authLoading && accessToken && !loading && !error && items.length === 0 ? (
               <EmptyState
                 title="No notifications found"
                 description="Try a different page, limit, or notification type. The API returned no items for the current query."
@@ -136,7 +136,7 @@ export function AllNotifications() {
               />
             ) : null}
 
-            {!loading && !error && items.length > 0 ? (
+            {!authLoading && accessToken && !loading && !error && items.length > 0 ? (
               <Grid container spacing={2}>
                 {items.map((notification) => (
                   <Grid key={notification.id} item xs={12}>

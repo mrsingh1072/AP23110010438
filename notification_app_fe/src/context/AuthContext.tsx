@@ -1,47 +1,23 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { Log } from '../../../logging_middleware/log';
+import { clearAccessToken, getAccessToken, setAccessToken } from '../utils/tokenStore';
+import { buildApiUrl } from '../utils/config';
 
 type AuthContextShape = {
   accessToken: string | null;
   isLoading: boolean;
   error: string | null;
   retry: () => void;
-  retryCount: number;
 };
 
 const AuthContext = createContext<AuthContextShape | undefined>(undefined);
 
-const MAX_AUTH_RETRIES = 3;
-const AUTH_RETRY_DELAY_MS = 2000;
-
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [accessToken, setAccessToken] = useState<string | null>(null);
+  const [accessToken, setAccessTokenState] = useState<string | null>(() => getAccessToken());
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [retryCount, setRetryCount] = useState(0);
-  const [hasAttempted, setHasAttempted] = useState(false);
-
-  /**
-   * Set token in global window and in memory
-   */
-  function setTokenGlobal(token: string | null) {
-    if (token) {
-      if (typeof window !== 'undefined') {
-        (window as any).__CAMPUS_ACCESS_TOKEN__ = token;
-      }
-      setAccessToken(token);
-    } else {
-      if (typeof window !== 'undefined') {
-        (window as any).__CAMPUS_ACCESS_TOKEN__ = null;
-      }
-      setAccessToken(null);
-    }
-  }
-
-  /**
-   * Authenticate using env variables
-   */
-  async function authenticate() {
+  const hasBootstrapped = useRef(false);
+  const authenticate = async () => {
     setIsLoading(true);
     setError(null);
 
@@ -66,16 +42,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         accessCode,
       };
 
-      console.debug('[AuthContext] Auth attempt', {
-        attempt: retryCount + 1,
-        maxAttempts: MAX_AUTH_RETRIES,
-        email,
-        timestamp: new Date().toISOString(),
-      });
+      console.debug('[AuthContext] Auth attempt', { email, timestamp: new Date().toISOString() });
 
-      void Log('frontend', 'info', 'auth', `Authentication attempt ${retryCount + 1}/${MAX_AUTH_RETRIES}`);
+      void Log('frontend', 'info', 'auth', 'Authentication attempt started');
 
-      const response = await fetch('/evaluation-service/auth', {
+      const response = await fetch(buildApiUrl('/auth'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -102,43 +73,59 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         timestamp: new Date().toISOString(),
       });
 
-      setTokenGlobal(token);
+      setAccessToken(token);
+      setAccessTokenState(token);
       void Log('frontend', 'info', 'auth', `Authentication successful with token (${token.length} chars)`);
       setError(null);
-      setHasAttempted(true);
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Authentication failed';
-      console.debug('[AuthContext] Auth error', {
-        error: msg,
-        attempt: retryCount + 1,
-        maxAttempts: MAX_AUTH_RETRIES,
-        canRetry: retryCount + 1 < MAX_AUTH_RETRIES,
-        timestamp: new Date().toISOString(),
-      });
+      console.debug('[AuthContext] Auth error', { error: msg, timestamp: new Date().toISOString() });
 
-      if (retryCount + 1 < MAX_AUTH_RETRIES) {
-        setError(`${msg} (attempt ${retryCount + 1}/${MAX_AUTH_RETRIES}, retrying...)`);
-        void Log('frontend', 'warn', 'auth', `Auth failed: ${msg}. Retrying in ${AUTH_RETRY_DELAY_MS}ms...`);
+      setError(msg);
+      void Log('frontend', 'error', 'auth', `Auth failed: ${msg}`);
 
-        // Schedule retry after delay
-        setTimeout(() => {
-          setRetryCount((c) => c + 1);
-        }, AUTH_RETRY_DELAY_MS);
-      } else {
-        setError(msg);
-        void Log('frontend', 'error', 'auth', `Auth failed after ${MAX_AUTH_RETRIES} attempts: ${msg}`);
-        setHasAttempted(true);
-      }
-
-      setTokenGlobal(null);
+      clearAccessToken();
+      setAccessTokenState(null);
     } finally {
       setIsLoading(false);
     }
+  };
+
+  function safeJsonParse(text: string): unknown {
+    try {
+      return JSON.parse(text);
+    } catch {
+      return text;
+    }
+  }
+
+  function extractErrorMessage(data: unknown, fallback: string): string {
+    if (typeof data === 'string' && data.trim()) return data;
+    if (typeof data === 'object' && data !== null) {
+      const d = data as any;
+      return d.message || d.error || d.details || fallback;
+    }
+    return fallback;
+  }
+
+  function normalizeToken(data: unknown): string {
+    if (typeof data === 'string' && data.trim()) return data;
+    if (typeof data === 'object' && data !== null) {
+      const d = data as any;
+      const token = d.access_token || d.accessToken || d.token;
+      if (typeof token === 'string' && token.trim()) return token;
+    }
+    throw new Error('Auth response missing access_token');
   }
 
   useEffect(() => {
-    authenticate();
-  }, [retryCount]);
+    if (hasBootstrapped.current) {
+      return;
+    }
+
+    hasBootstrapped.current = true;
+    void authenticate();
+  }, []);
 
   return (
     <AuthContext.Provider
@@ -146,13 +133,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         accessToken,
         isLoading,
         error,
-        retryCount,
         retry: () => {
-          if (retryCount + 1 >= MAX_AUTH_RETRIES) {
-            setRetryCount(0);
-          } else {
-            setRetryCount((c) => c + 1);
-          }
+          void authenticate();
         },
       }}
     >
@@ -167,29 +149,3 @@ export function useAuth() {
   return ctx;
 }
 
-function safeJsonParse(text: string): unknown {
-  try {
-    return JSON.parse(text);
-  } catch {
-    return text;
-  }
-}
-
-function extractErrorMessage(data: unknown, fallback: string): string {
-  if (typeof data === 'string' && data.trim()) return data;
-  if (typeof data === 'object' && data !== null) {
-    const d = data as any;
-    return d.message || d.error || d.details || fallback;
-  }
-  return fallback;
-}
-
-function normalizeToken(data: unknown): string {
-  if (typeof data === 'string' && data.trim()) return data;
-  if (typeof data === 'object' && data !== null) {
-    const d = data as any;
-    const token = d.access_token || d.accessToken || d.token;
-    if (typeof token === 'string' && token.trim()) return token;
-  }
-  throw new Error('Auth response missing access_token');
-}

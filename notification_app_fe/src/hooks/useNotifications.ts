@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState, type Dispatch, type SetStateAction } from 'react';
 import { Log } from '../../../logging_middleware/log';
+import { useAuth } from '../context/AuthContext';
 import {
   createNotification,
   fetchNotificationPage,
@@ -56,6 +57,7 @@ export function useNotifications(notificationType?: NotificationFilter): UseNoti
 export function useNotifications(mode?: boolean | NotificationFilter): UseNotificationsResult | LegacyNotificationsResult {
   const isLegacyMode = typeof mode === 'boolean';
   const notificationType = isLegacyMode ? 'All' : mode ?? 'All';
+  const { accessToken, isLoading: authLoading } = useAuth();
 
   const [legacyNotifications, setLegacyNotifications] = useState<NotificationRecord[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -71,9 +73,8 @@ export function useNotifications(mode?: boolean | NotificationFilter): UseNotifi
   const fetchNotifications = useCallback(async () => {
     const token = getAccessToken();
 
-    if (!token) {
+    if (authLoading || !token) {
       setNotifications([]);
-      setError('A bearer token is required before loading notifications.');
       return;
     }
 
@@ -105,7 +106,7 @@ export function useNotifications(mode?: boolean | NotificationFilter): UseNotifi
     } finally {
       setLoading(false);
     }
-  }, [limit, notificationType, page]);
+  }, [authLoading, limit, notificationType, page]);
 
   const refreshNotifications = useCallback(async () => {
     if (!isLegacyMode || !mode) {
@@ -117,9 +118,8 @@ export function useNotifications(mode?: boolean | NotificationFilter): UseNotifi
 
     const token = getAccessToken();
 
-    if (!token) {
+    if (authLoading || !token) {
       setLegacyNotifications([]);
-      setLegacyError('A bearer token is required before loading notifications.');
       return;
     }
 
@@ -138,7 +138,7 @@ export function useNotifications(mode?: boolean | NotificationFilter): UseNotifi
     } finally {
       setIsLoading(false);
     }
-  }, [isLegacyMode, mode]);
+  }, [authLoading, isLegacyMode, mode]);
 
   const submitNotification = useCallback(async (payload: NotificationPayload) => {
     setIsSaving(true);
@@ -160,16 +160,16 @@ export function useNotifications(mode?: boolean | NotificationFilter): UseNotifi
   }, []);
 
   useEffect(() => {
-    if (!isLegacyMode) {
+    if (!isLegacyMode && accessToken) {
       void fetchNotifications();
     }
-  }, [fetchNotifications, isLegacyMode]);
+  }, [accessToken, fetchNotifications, isLegacyMode]);
 
   useEffect(() => {
-    if (isLegacyMode) {
+    if (isLegacyMode && accessToken) {
       void refreshNotifications();
     }
-  }, [isLegacyMode, refreshNotifications]);
+  }, [accessToken, isLegacyMode, refreshNotifications]);
 
   if (isLegacyMode) {
     return {

@@ -1,4 +1,5 @@
 import { Log } from '../../../logging_middleware/log';
+import { buildApiUrl } from '../utils/config';
 
 export type CampusNotificationType = 'Event' | 'Result' | 'Placement';
 export type NotificationFilter = 'All' | CampusNotificationType;
@@ -24,13 +25,8 @@ function getAccessToken(): string | null {
   return (window as any).__CAMPUS_ACCESS_TOKEN__ ?? null;
 }
 
-const CAMPUS_NOTIFICATIONS_ENDPOINT = '/evaluation-service/notifications';
-const API_BASE = '';
+const CAMPUS_NOTIFICATIONS_ENDPOINT = '/notifications';
 const MAX_PAGES_TO_FETCH = 50;
-
-function buildApiUrl(path: string): string {
-  return `${path}`;
-}
 
 function isValidNotificationType(value: string): value is CampusNotificationType {
   return value === 'Event' || value === 'Result' || value === 'Placement';
@@ -105,7 +101,7 @@ async function requestCampusNotifications(query: Partial<CampusNotificationQuery
 
   void Log('frontend', 'info', 'api', `Fetching notifications with page ${page} and limit ${limit}`);
 
-  const url = buildCampusUrl(query);
+  const url = buildApiUrl(buildCampusUrl(query));
   console.debug('[API] Notifications request', { url, page, limit, token: token?.substring(0, 20) + '...' });
 
   const response = await fetch(url, {
@@ -353,7 +349,7 @@ function safeJsonParse(value: string): unknown {
 
 export async function registerUser(credentials: AuthCredentials): Promise<void> {
   try {
-    await requestJson('/evaluation-service/register', {
+    await requestJson('/register', {
       method: 'POST',
       auth: false,
       body: credentials,
@@ -369,7 +365,7 @@ export async function registerUser(credentials: AuthCredentials): Promise<void> 
 
 export async function authenticateUser(credentials: AuthCredentials): Promise<AuthSession> {
   try {
-    const body = await requestJson<unknown>('/evaluation-service/auth', {
+    const body = await requestJson<unknown>('/auth', {
       method: 'POST',
       auth: false,
       body: {
@@ -397,7 +393,7 @@ export async function authenticateUser(credentials: AuthCredentials): Promise<Au
 
 export async function fetchNotifications(): Promise<NotificationRecord[]> {
   try {
-    const body = await requestJson<unknown>('/evaluation-service/notifications', {
+    const body = await requestJson<unknown>('/notifications', {
       method: 'GET',
     });
 
@@ -413,7 +409,7 @@ export async function fetchNotifications(): Promise<NotificationRecord[]> {
 
 export async function createNotification(payload: NotificationPayload): Promise<NotificationRecord> {
   try {
-    const body = await requestJson<unknown>('/evaluation-service/notifications', {
+    const body = await requestJson<unknown>('/notifications', {
       method: 'POST',
       body: payload,
     });
